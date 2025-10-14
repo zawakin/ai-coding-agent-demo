@@ -1,7 +1,7 @@
 """File System API - read and write files safely within the repository."""
 
 from typing import Dict, List, Any
-from .utils import safe_join
+from .utils import safe_join, ensure_writable
 
 
 def read_file_definition() -> Dict[str, Any]:
@@ -105,6 +105,9 @@ def run_write_file(inputs: Dict[str, Any], root: str) -> List[Dict[str, str]]:
     try:
         path = safe_join(root, inputs["path"])
         content = inputs["content"]
+
+        # Verify path is within allowed write root
+        ensure_writable(path)
 
         # Create parent directories if needed
         path.parent.mkdir(parents=True, exist_ok=True)

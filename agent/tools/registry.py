@@ -2,7 +2,7 @@
 
 from typing import Any, Dict, List
 import os
-from . import question, search, fs
+from . import question, search, fs, memory, delegate
 from ..system_prompts import base_system_prompt
 
 
@@ -12,16 +12,20 @@ class ToolRegistry:
     Handles tool definition, execution dispatch, and configuration.
     """
 
-    def __init__(self, repo_root: str, allow_write: bool = True):
+    def __init__(self, repo_root: str, allow_write: bool = True, model: str = "claude-sonnet-4-5", api_key: str = ""):
         """
         Initialize the tool registry.
 
         Args:
             repo_root: Root directory of the repository to work with
             allow_write: Whether to allow file write operations (default: True)
+            model: Claude model to use for delegate tasks (default: claude-sonnet-4-5)
+            api_key: Anthropic API key for delegate tasks
         """
         self.repo_root = repo_root
         self.allow_write = allow_write
+        self.model = model
+        self.api_key = api_key
 
     def client_tools_schema(self) -> List[Dict[str, Any]]:
         """
@@ -36,6 +40,8 @@ class ToolRegistry:
             search.search_files_definition(),
             search.search_in_files_definition(),
             fs.read_file_definition(),
+            memory.definition(),  # Always available for learning
+            delegate.definition(),  # Always available for task delegation
         ]
 
         # Only include write_file tool if write operations are allowed
@@ -110,11 +116,12 @@ class ToolRegistry:
     def system_prompt(self) -> List[Dict[str, str]]:
         """
         Returns the system prompt for the agent.
+        Includes loaded memory from AGENTS.md if available.
 
         Returns:
             System prompt in Claude's format
         """
-        return base_system_prompt()
+        return base_system_prompt(repo_root=self.repo_root)
 
     def execute(self, name: str, inputs: Dict[str, Any], tool_use_id: str) -> List[Dict[str, Any]]:
         """
@@ -139,6 +146,10 @@ class ToolRegistry:
             content = fs.run_read_file(inputs, self.repo_root)
         elif name == "write_file":
             content = fs.run_write_file(inputs, self.repo_root)
+        elif name == "save_memory":
+            content = memory.run(inputs, self.repo_root)
+        elif name == "delegate_task":
+            content = delegate.run(inputs, self.repo_root, self.model)
         else:
             # Unknown tool
             content = [{"type": "text", "text": f"Unknown tool: {name}"}]

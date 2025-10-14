@@ -7,6 +7,7 @@ import sys
 import tempfile
 import shutil
 import uuid
+import atexit
 
 from .orchestrator import ClaudeOrchestrator
 from .tools.registry import ToolRegistry
@@ -22,7 +23,8 @@ def _ephemeral_repo(src: str) -> str:
     Create an ephemeral copy of a repository in a temporary directory.
 
     This ensures the demo starts from a clean state every time without
-    modifying the original repository.
+    modifying the original repository. The temporary directory is
+    automatically cleaned up on exit.
 
     Args:
         src: Source repository path
@@ -32,6 +34,10 @@ def _ephemeral_repo(src: str) -> str:
     """
     tmp = Path(tempfile.gettempdir()) / f"agent-demo-{uuid.uuid4().hex}"
     shutil.copytree(src, tmp, dirs_exist_ok=False)
+
+    # Register cleanup function to remove temp directory on exit
+    atexit.register(lambda: shutil.rmtree(tmp, ignore_errors=True))
+
     return str(tmp)
 
 
@@ -55,21 +61,22 @@ def chat(
         help="Create a temporary copy of the repo (keeps original clean)"
     ),
     allow_write: bool = typer.Option(
-        True,
+        False,
         "--allow-write/--read-only",
-        help="Allow the agent to write/modify files"
+        help="Allow the agent to write/modify files (default: read-only for safety)"
     ),
     verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help="Show detailed tool execution logs"
+        True,
+        "--verbose/--quiet",
+        "-v/-q",
+        help="Show detailed tool execution logs (default: verbose)"
     )
 ):
     """
     Start an interactive chat session with the AI Coding Agent.
 
-    The agent can search files, read code, write files, and ask clarifying questions.
+    The agent can search files, read code, and ask clarifying questions.
+    Use --allow-write to enable file modifications (writes to demo/workspace only).
     Type 'exit' or 'quit' to end the session.
     """
     # Validate repository path
@@ -87,7 +94,11 @@ def chat(
 
     # Initialize the agent
     try:
-        tool_registry = ToolRegistry(repo_root=str(repo_path.absolute()), allow_write=allow_write)
+        tool_registry = ToolRegistry(
+            repo_root=str(repo_path.absolute()),
+            allow_write=allow_write,
+            model=model
+        )
 
         # Log callback for verbose mode
         def log_callback(msg: str):
@@ -115,6 +126,8 @@ def chat(
     console.print("  - [yellow]search_in_files[/yellow]: Search for text in files")
     console.print("  - [yellow]read_file[/yellow]: Read file contents")
     console.print("  - [yellow]write_file[/yellow]: Create or modify files")
+    console.print("  - [yellow]save_memory[/yellow]: Save learnings to AGENTS.md")
+    console.print("  - [yellow]delegate_task[/yellow]: Delegate to sub-agents")
     console.print("  - [yellow]web_search[/yellow]: Search the web (server tool)")
     console.print("\nType 'exit' or 'quit' to end the session.\n")
 
@@ -174,21 +187,22 @@ def oneshot(
         help="Create a temporary copy of the repo (keeps original clean)"
     ),
     allow_write: bool = typer.Option(
-        True,
+        False,
         "--allow-write/--read-only",
-        help="Allow the agent to write/modify files"
+        help="Allow the agent to write/modify files (default: read-only for safety)"
     ),
     verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help="Show detailed tool execution logs"
+        True,
+        "--verbose/--quiet",
+        "-v/-q",
+        help="Show detailed tool execution logs (default: verbose)"
     )
 ):
     """
     Send a single prompt to the AI Coding Agent and print the response.
 
     Useful for scripting and automation.
+    Use --allow-write to enable file modifications (writes to demo/workspace only).
     """
     # Validate repository path
     repo_path = Path(repo)
@@ -204,7 +218,11 @@ def oneshot(
 
     # Initialize the agent
     try:
-        tool_registry = ToolRegistry(repo_root=str(repo_path.absolute()), allow_write=allow_write)
+        tool_registry = ToolRegistry(
+            repo_root=str(repo_path.absolute()),
+            allow_write=allow_write,
+            model=model
+        )
 
         # Log callback for verbose mode
         def log_callback(msg: str):

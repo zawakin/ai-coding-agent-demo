@@ -4,6 +4,13 @@ import os
 from pathlib import Path
 
 
+# Write operations are restricted to this directory
+# Can be overridden with AGENT_WRITE_ROOT environment variable
+ALLOWED_WRITE_ROOT = Path(
+    os.getenv("AGENT_WRITE_ROOT", "demo/workspace")
+).resolve()
+
+
 def safe_join(root: str, rel_path: str) -> Path:
     """
     Safely join a root directory with a relative path, preventing path traversal.
@@ -25,6 +32,34 @@ def safe_join(root: str, rel_path: str) -> Path:
         raise ValueError(f"Path traversal detected: {rel_path}")
 
     return target_path
+
+
+def ensure_writable(path: Path) -> None:
+    """
+    Verify that a path is within the allowed write root.
+
+    This provides an additional safety layer for write operations.
+    Only paths under ALLOWED_WRITE_ROOT (default: demo/workspace) can be written.
+
+    Args:
+        path: The path to check
+
+    Raises:
+        ValueError: If the path is outside the allowed write root
+    """
+    path_resolved = path.resolve()
+
+    # If ALLOWED_WRITE_ROOT doesn't exist, create it
+    if not ALLOWED_WRITE_ROOT.exists():
+        ALLOWED_WRITE_ROOT.mkdir(parents=True, exist_ok=True)
+
+    if not str(path_resolved).startswith(str(ALLOWED_WRITE_ROOT)):
+        raise ValueError(
+            f"Write blocked: path outside workspace\n"
+            f"  Attempted: {path_resolved}\n"
+            f"  Allowed: {ALLOWED_WRITE_ROOT}\n"
+            f"  (Set AGENT_WRITE_ROOT env var to change)"
+        )
 
 
 def is_text_file(file_path: Path, max_size: int = 2_000_000) -> bool:

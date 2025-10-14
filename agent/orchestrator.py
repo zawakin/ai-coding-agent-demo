@@ -45,7 +45,7 @@ class ClaudeOrchestrator:
     def run_once(self, user_text: str, tool_registry) -> str:
         """
         Process a single user message and return Claude's response.
-        Handles the complete tool use loop if tools are invoked.
+        Handles the complete tool use loop if tools are invoked (multi-turn).
 
         Args:
             user_text: The user's input message
@@ -56,7 +56,6 @@ class ClaudeOrchestrator:
         """
         # Add user message to history
         self.history.append({"role": "user", "content": user_text})
-        self._log("📤 Sending request to Claude...")
 
         # Prepare request parameters
         tools = tool_registry.client_tools_schema() + tool_registry.server_tools_schema()
@@ -68,33 +67,47 @@ class ClaudeOrchestrator:
         if beta_headers:
             extra_headers["anthropic-beta"] = ",".join(beta_headers)
 
-        # Initial API call
-        request_params = {
-            "model": self.model,
-            "max_tokens": 4096,
-            "messages": self.history,
-            "system": tool_registry.system_prompt(),
-            "tools": tools,
-            "tool_choice": {"type": "auto", "disable_parallel_tool_use": False},
-        }
+        # Tool use loop: continue until no more tool_use blocks are returned
+        turn_count = 0
+        max_turns = 10  # Safety limit to prevent infinite loops
 
-        # Add MCP servers if configured
-        if mcp_servers:
-            request_params["mcp_servers"] = mcp_servers
+        while turn_count < max_turns:
+            turn_count += 1
+            self._log(f"📤 Sending request to Claude (turn {turn_count})...")
 
-        # Add beta headers if needed
-        if extra_headers:
-            response = self.client.messages.create(
-                **request_params,
-                extra_headers=extra_headers
-            )
-        else:
-            response = self.client.messages.create(**request_params)
+            # Prepare API request
+            request_params = {
+                "model": self.model,
+                "max_tokens": 4096,
+                "messages": self.history,
+                "system": tool_registry.system_prompt(),
+                "tools": tools,
+                "tool_choice": {"type": "auto", "disable_parallel_tool_use": False},
+            }
 
-        # Check if Claude wants to use tools
-        tool_uses = [block for block in response.content if getattr(block, "type", None) == "tool_use"]
+            # Add MCP servers if configured
+            if mcp_servers:
+                request_params["mcp_servers"] = mcp_servers
 
-        if tool_uses:
+            # Make API call
+            if extra_headers:
+                response = self.client.messages.create(
+                    **request_params,
+                    extra_headers=extra_headers
+                )
+            else:
+                response = self.client.messages.create(**request_params)
+
+            # Check if Claude wants to use tools
+            tool_uses = [block for block in response.content if getattr(block, "type", None) == "tool_use"]
+
+            # Add assistant's response to history
+            self.history.append({"role": "assistant", "content": response.content})
+
+            if not tool_uses:
+                # No more tools to use, return final response
+                return self._extract_text(response.content)
+
             # Execute all tool calls and collect results
             results_content: List[Dict[str, Any]] = []
             self._log(f"🔧 Executing {len(tool_uses)} tool(s)...")
@@ -114,44 +127,15 @@ class ClaudeOrchestrator:
                 tool_result_blocks = tool_registry.execute(tool_name, tool_inputs, tool_use_id)
                 results_content.extend(tool_result_blocks)
 
-            # Add assistant's tool use to history
-            self.history.append({"role": "assistant", "content": response.content})
-
             # Add tool results as a single user message
             # This format is required: tool_result blocks must be in a user message
             self.history.append({"role": "user", "content": results_content})
-            self._log("💭 Getting final response from Claude...")
 
-            # Get final response from Claude
-            final_request_params = {
-                "model": self.model,
-                "max_tokens": 4096,
-                "messages": self.history,
-                "system": tool_registry.system_prompt(),
-                "tools": tools,
-                "tool_choice": {"type": "auto"},
-            }
+            # Loop continues - Claude may want to use more tools
 
-            if mcp_servers:
-                final_request_params["mcp_servers"] = mcp_servers
-
-            if extra_headers:
-                final_response = self.client.messages.create(
-                    **final_request_params,
-                    extra_headers=extra_headers
-                )
-            else:
-                final_response = self.client.messages.create(**final_request_params)
-
-            # Add final response to history
-            self.history.append({"role": "assistant", "content": final_response.content})
-
-            # Extract text from response
-            return self._extract_text(final_response.content)
-        else:
-            # No tool use, just a regular response
-            self.history.append({"role": "assistant", "content": response.content})
-            return self._extract_text(response.content)
+        # Safety fallback: if we hit max turns, return the last response
+        self._log(f"⚠️  Reached maximum turns ({max_turns}), returning last response")
+        return self._extract_text(self.history[-1]["content"]) if self.history[-1]["role"] == "assistant" else "(no response)"
 
     def _extract_text(self, content: List[Any]) -> str:
         """
