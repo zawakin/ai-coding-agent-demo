@@ -1,306 +1,90 @@
-# AI Coding Agent Demo
+# AI Coding Agent
 
-A demonstration of Claude API's latest features including tool use, parallel tool execution, MCP integration, and server tools.
+A demonstration of Claude API's agentic capabilities including tool use, parallel execution, and MCP integration.
 
-## Features
-
-### Core Capabilities
-- **Question API**: Agent asks clarifying questions when requirements are ambiguous
-- **Search API**: Glob-based file search and grep-based content search
-- **File Operations**: Read and write files safely within the repository
-- **Memory System**: Persist important learnings across sessions in AGENTS.md
-- **Task Delegation**: Spawn sub-agents to handle independent subtasks in parallel
-- **Parallel Tool Execution**: Multiple independent tool calls executed in parallel
-- **Server Tools**: Web search with automatic citations (requires org enablement)
-- **MCP Integration**: Connect to external MCP servers via HTTP/SSE
-
-### Tools Available
-
-#### Client Tools (executed locally)
-- `ask_user`: Ask the user clarifying questions
-- `search_files`: Find files using glob patterns (e.g., `**/*.py`)
-- `search_in_files`: Search for text within files (grep-like)
-- `read_file`: Read file contents
-- `write_file`: Create or modify files
-- `save_memory`: Save important learnings to AGENTS.md for future sessions
-- `delegate_task`: Delegate subtasks to read-only sub-agents
-
-#### Server Tools (executed by Anthropic)
-- `web_search`: Search the web with automatic citations
-
-## Installation
+## Quick Start
 
 ### Prerequisites
-- Python 3.11 or higher
-- [uv](https://github.com/astral-sh/uv) package manager (recommended) or pip
+- Python 3.11+
+- [uv](https://github.com/astral-sh/uv) package manager
 - Anthropic API key
 
-### Setup
+### Installation
 
-1. Clone the repository:
 ```bash
+# Clone and install
 git clone <your-repo-url>
 cd ai-coding-agent
-```
-
-2. Install dependencies:
-```bash
-# Using uv (recommended)
 uv sync
 
-# Or using pip
-pip install -e .
-```
-
-3. Configure environment:
-```bash
+# Configure API key
 cp .env.example .env
 # Edit .env and add your ANTHROPIC_API_KEY
 ```
 
-## Usage
-
-### Interactive Chat Mode
-
-Start an interactive session with the agent:
+### Usage
 
 ```bash
+# Start interactive chat
 uv run python -m agent.main chat
-```
 
-Or specify a custom repository:
+# Enable file writing (writes to demo/workspace/ only)
+uv run python -m agent.main chat --allow-write
 
-```bash
+# Work with a specific repository
 uv run python -m agent.main chat --repo /path/to/your/repo
 ```
 
-Example conversation:
-```
-You: Add a shopping cart feature to the sample app
-Agent: [Uses search_files to find relevant files]
-Agent: [Uses read_file to understand the structure]
-Agent: [Asks clarifying questions about requirements]
-Agent: [Writes the new code following existing patterns]
-```
+## Features
 
-### One-shot Mode
+**Core Tools:**
+- File search (glob patterns)
+- Content search (grep)
+- File read/write operations
+- Memory persistence across sessions
+- Task delegation to sub-agents
+- Web search with citations
 
-Send a single prompt:
-
-```bash
-uv run python -m agent.main oneshot "List all Python files in the auth module"
-```
-
-### Command-line Options
-
-```bash
-# Specify a different Claude model
-uv run python -m agent.main chat --model claude-opus-4
-
-# Work with a different repository
-uv run python -m agent.main chat --repo ./my-project
-
-# Ephemeral mode (default) - keeps original repo clean
-uv run python -m agent.main chat --ephemeral
-
-# Direct mode - work on original repo
-uv run python -m agent.main chat --no-ephemeral
-
-# Read-only mode - prevent file modifications
-uv run python -m agent.main chat --read-only
-
-# Combine options for safe demos
-uv run python -m agent.main chat --ephemeral --read-only
-
-# Get help
-uv run python -m agent.main --help
-```
-
-### Ephemeral Mode (Recommended for Demos)
-
-By default, the agent runs in **ephemeral mode**, creating a temporary copy of your repository for each session. This ensures:
-
-- ✅ Original repository remains unchanged
-- ✅ Each demo starts from a clean state
-- ✅ Safe experimentation without side effects
-- ✅ Multiple concurrent sessions without conflicts
-
-The temporary directory is created in your system's temp folder (`/tmp` or similar) and includes all files from the original repository.
-
-**When to use `--no-ephemeral`:**
-- You want changes to persist in the original repository
-- You're working on actual development (not a demo)
-- You trust the agent's modifications
-
-### Read-Only Mode (Default for Safety)
-
-**By default**, the agent runs in **read-only mode** to prevent accidental modifications. Use `--allow-write` to enable file modifications:
-
-```bash
-# Default: read-only mode (safe for demos)
-uv run python -m agent.main chat
-
-# Enable write operations (restricted to demo/workspace only)
-uv run python -m agent.main chat --allow-write
-```
-
-Read-only mode is useful when:
-- Demonstrating search and analysis capabilities only
-- Ensuring no accidental modifications
-- Reviewing code without risk of changes
-- Testing with production repositories
-
-### Write Safety
-
-When write operations are enabled with `--allow-write`, files can **only** be written to `demo/workspace/` (or the directory specified by `AGENT_WRITE_ROOT` environment variable). This prevents the agent from accidentally modifying your actual source code.
-
-```bash
-# Customize write root (for advanced users)
-export AGENT_WRITE_ROOT=/path/to/safe/workspace
-uv run python -m agent.main chat --allow-write
-```
-
-## Demo Flow
-
-The demo is designed to showcase progressive enhancement:
-
-### V0: Baseline (No Tools)
-Remove tools to show how the agent might make assumptions or hallucinate code.
-
-### V1: Question API
-Enable `ask_user` tool - agent now asks clarifying questions instead of guessing.
-
-### V2: Search API
-Enable `search_files` and `search_in_files` - agent discovers existing code patterns.
-
-### V3: Read API
-Enable `read_file` - agent reads existing implementations and follows conventions.
-
-### V4: Parallel Execution
-Demonstrate multiple files being read simultaneously for efficiency.
-
-### V5: Server Tools
-Enable `web_search` to fetch latest best practices and documentation.
-
-### V6: MCP Integration
-Connect to external MCP servers for additional capabilities.
+**Safety:**
+- Read-only by default
+- Ephemeral mode creates temporary copies
+- Write operations restricted to workspace directory
+- Path traversal protection
 
 ## Architecture
 
 ```
-ai-coding-agent/
-   agent/
-      main.py              # CLI entry point
-      orchestrator.py      # Claude API communication
-      system_prompts.py    # System prompts and instructions
-      tools/
-          registry.py      # Tool definitions and dispatch
-          question.py      # Question API
-          search.py        # Search APIs
-          fs.py           # File system APIs
-          utils.py        # Utility functions
-   demo/
-       sample_repo/        # Sample project for demos
+agent/
+  main.py              # CLI entry point
+  orchestrator.py      # Claude API communication
+  tools/
+    registry.py        # Tool definitions
+    search.py          # File and content search
+    fs.py             # File operations
 ```
-
-### Key Components
-
-**ClaudeOrchestrator** (`agent/orchestrator.py`)
-- Manages conversation history
-- Handles tool use loop (tool_use → execute → tool_result)
-- Supports parallel tool execution
-
-**ToolRegistry** (`agent/tools/registry.py`)
-- Centralizes tool definitions
-- Dispatches tool execution
-- Configures server tools and MCP
-
-**System Prompts** (`agent/system_prompts.py`)
-- Defines agent behavior
-- Encourages parallel tool execution
-- Sets coding standards
-
-## Implementation Details
-
-### Tool Use Format
-
-The implementation follows Claude's Messages API format:
-
-1. User sends a message
-2. Claude responds with `tool_use` blocks
-3. Client executes tools and returns `tool_result` in a user message
-4. All tool results are batched in a single user message (enables parallel learning)
-5. Claude provides final response
-
-### Parallel Tool Execution
-
-Enabled by default. The system prompt encourages parallel calls:
-```python
-"Whenever multiple independent operations are needed, invoke relevant tools in parallel."
-```
-
-To disable for specific use cases:
-```python
-tool_choice={"type": "auto", "disable_parallel_tool_use": True}
-```
-
-### Security
-
-**Multi-layered Safety:**
-
-1. **Read-only by default**: Agent cannot modify files unless explicitly enabled with `--allow-write`
-2. **Write workspace isolation**: Write operations are restricted to `demo/workspace/` only (configurable via `AGENT_WRITE_ROOT`)
-3. **Ephemeral mode**: Creates temporary copies that are automatically cleaned up on exit
-4. **Path traversal protection**: `safe_join()` prevents escaping the repository
-5. **File size limits**: Prevents reading files larger than 100KB to avoid memory issues
-6. **Binary file detection**: Automatically skips binary files in searches
-7. **Multi-turn safety**: Maximum 10 turns per conversation to prevent infinite loops
 
 ## Configuration
 
-### Server Tools
-
-Server tools like `web_search` require organization-level enablement. Contact Anthropic support if you don't have access.
-
-### MCP Integration
-
-To connect MCP servers, set environment variables:
-
+**Models:**
 ```bash
-MY_MCP_URL=https://example-server.modelcontextprotocol.io/sse
-MY_MCP_BEARER=your_bearer_token
+uv run python -m agent.main chat --model claude-opus-4
 ```
 
-Note: Only HTTP/SSE MCP servers are supported (not STDIO).
-
-## Troubleshooting
-
-### API Key Issues
+**Modes:**
 ```bash
-Error: ANTHROPIC_API_KEY environment variable not set
-```
-Solution: Create `.env` file with your API key.
+# Safe demo mode (default)
+uv run python -m agent.main chat --ephemeral --read-only
 
-### Model Access
-```bash
-Error: model 'claude-opus-4' not found
+# Development mode
+uv run python -m agent.main chat --no-ephemeral --allow-write
 ```
-Solution: Use `claude-sonnet-4-5` (default) or check your account's model access.
 
-### MCP Connection
-```bash
-Error: MCP server not responding
-```
-Solution: Verify the MCP server URL is accessible and supports HTTP/SSE.
-
-## References
+## Documentation
 
 - [Claude Messages API](https://docs.anthropic.com/en/api/messages)
-- [Tool Use Implementation](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/implement-tool-use)
-- [Parallel Tool Execution](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/implement-tool-use)
-- [Web Search Tool](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use/web-search-tool)
+- [Tool Use Guide](https://docs.anthropic.com/en/docs/agents-and-tools/tool-use)
 - [MCP Connector](https://docs.anthropic.com/en/docs/agents-and-tools/mcp-connector)
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT
